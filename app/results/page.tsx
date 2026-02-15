@@ -92,6 +92,8 @@ export default function ResultsPage() {
   const generateItinerary = async (data: any) => {
     try {
       setIsLoading(true)
+      console.log("[v0] Sending request to API with data:", data)
+
       const response = await fetch("/api/generate-itinerary", {
         method: "POST",
         headers: {
@@ -100,15 +102,25 @@ export default function ResultsPage() {
         body: JSON.stringify(data),
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to generate itinerary")
-      }
+      console.log("[v0] Response status:", response.status)
 
       const result = await response.json()
+      console.log("[v0] Response data:", result)
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to generate itinerary")
+      }
+
+      if (!result.itinerary) {
+        throw new Error("No itinerary data in response")
+      }
+
       setItinerary(result.itinerary)
+      console.log("[v0] Itinerary set successfully")
     } catch (err) {
-      setError("Failed to generate your itinerary. Please try again.")
-      console.error("Error:", err)
+      const errorMessage = err instanceof Error ? err.message : "Failed to generate your itinerary. Please try again."
+      setError(errorMessage)
+      console.error("[v0] Error:", err)
     } finally {
       setIsLoading(false)
     }
