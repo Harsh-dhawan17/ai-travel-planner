@@ -85,19 +85,45 @@ export async function POST(req: Request) {
     })
 
     console.log("[v0] Generated itinerary text successfully")
+    console.log("[v0] Raw response length:", text.length)
 
-    // Parse the JSON response
+    // Parse the JSON response with improved extraction
     let itinerary
+    let cleanText = text.trim()
+    
+    // Remove markdown code blocks if present
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.replace(/^```json\n/, "").replace(/\n```$/, "")
+    } else if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```\n/, "").replace(/\n```$/, "")
+    }
+
     try {
-      itinerary = JSON.parse(text)
+      itinerary = JSON.parse(cleanText)
+      console.log("[v0] Successfully parsed JSON directly")
     } catch (parseError) {
-      console.error("[v0] Failed to parse itinerary JSON:", parseError)
-      // Try to extract JSON from the text if it contains extra content
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        itinerary = JSON.parse(jsonMatch[0])
+      console.log("[v0] Failed to parse JSON directly, attempting extraction")
+      
+      // Try to find and extract JSON object from the text
+      const jsonStart = cleanText.indexOf("{")
+      const jsonEnd = cleanText.lastIndexOf("}")
+      
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        const extractedJson = cleanText.substring(jsonStart, jsonEnd + 1)
+        console.log("[v0] Extracted JSON substring")
+        
+        try {
+          itinerary = JSON.parse(extractedJson)
+          console.log("[v0] Successfully parsed extracted JSON")
+        } catch (extractError) {
+          console.error("[v0] Failed to parse extracted JSON:", extractError)
+          console.log("[v0] First 500 chars of response:", text.substring(0, 500))
+          throw new Error("Could not parse itinerary response as JSON")
+        }
       } else {
-        throw new Error("Could not extract valid JSON from response")
+        console.error("[v0] Could not find JSON object in response")
+        console.log("[v0] First 500 chars of response:", text.substring(0, 500))
+        throw new Error("No JSON object found in response")
       }
     }
 
