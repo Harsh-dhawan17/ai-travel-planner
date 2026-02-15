@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     console.log("[v0] Generating itinerary for:", { destination, days, travelers, budget, interests })
 
     const { output: itinerary } = await generateText({
-      model: groq("llama-3.1-70b-versatile"),
+      model: groq("mixtral-8x7b-32768"),
       output: Output.object({
         schema: itinerarySchema,
       }),
