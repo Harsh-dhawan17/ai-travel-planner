@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     console.log("[v0] Generating itinerary for:", { destination, days, travelers, budget, interests })
 
     // Get real destination data
-    const destData = getDestination(destination)
+    const destData = await getDestination(destination)
 
     // Generate day-by-day itinerary
     const generatedDays = Array.from({ length: days }, (_, dayIndex) => {
