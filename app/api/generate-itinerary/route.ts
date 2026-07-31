@@ -73,7 +73,16 @@ export async function POST(req: Request) {
     const tips = generateOptimizedTips(destData.name, days, "moderate", interests)
 
     // Calculate budget breakdown
-    const budgetBreakdown = calculateBudgetBreakdown(days, budget as "budget" | "medium" | "luxury", destData.budget)
+    const budgetBreakdownRaw = calculateBudgetBreakdown(days, budget as "budget" | "medium" | "luxury", destData.budget)
+
+    // Flatten budget for frontend - use total breakdown
+    const budgetFlat = {
+      accommodation: budgetBreakdownRaw.total.accommodation,
+      food: budgetBreakdownRaw.total.food,
+      activities: budgetBreakdownRaw.total.activities,
+      transportation: budgetBreakdownRaw.total.transport,
+      total: budgetBreakdownRaw.total.total,
+    }
 
     const itinerary = {
       destination: destData.name,
@@ -86,7 +95,7 @@ export async function POST(req: Request) {
       timezone: destData.timezone,
       days: optimizedDays,
       tips,
-      budget: budgetBreakdown,
+      budget: budgetFlat,
     }
 
     console.log("[v0] Generated complete itinerary successfully")
