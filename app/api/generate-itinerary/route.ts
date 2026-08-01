@@ -1,110 +1,158 @@
-import { getDestination } from "@/lib/services/destination-service"
-import { optimizeItinerary, generateOptimizedTips, calculateBudgetBreakdown } from "@/lib/services/itinerary-optimizer"
+import { generateText } from "ai"
+import { groq } from "@ai-sdk/groq"
 
 export async function POST(req: Request) {
   try {
     const { destination, startDate, endDate, travelers, interests, budget } = await req.json()
+
+    console.log("[v0] Request received:", { destination, startDate, endDate, travelers, budget, interests })
 
     // Calculate trip duration
     const start = new Date(startDate)
     const end = new Date(endDate)
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) || 1
 
-    console.log("[v0] Generating itinerary for:", { destination, days, travelers, budget, interests })
+    console.log("[v0] Trip duration calculated:", days, "days")
 
-    // Get real destination data
-    const destData = await getDestination(destination)
+    // Create a detailed prompt for Groq to generate real itinerary
+    const prompt = `You are an expert travel planner. Create a REAL and detailed ${days}-day travel itinerary for ${destination} for ${travelers} travelers with a ${budget} budget.
 
-    // Generate day-by-day itinerary
-    const generatedDays = Array.from({ length: days }, (_, dayIndex) => {
-      // Select attractions for this day
-      const dayAttractions = destData.attractions.slice(dayIndex % 2, Math.min(dayIndex % 2 + 4, destData.attractions.length))
+IMPORTANT: Return response in this EXACT format. Do NOT add any markdown formatting, code blocks, or extra text.
 
-      // Select restaurants
-      const breakfastIdx = dayIndex % destData.restaurants.breakfast.length
-      const lunchIdx = dayIndex % destData.restaurants.lunch.length
-      const dinnerIdx = dayIndex % destData.restaurants.dinner.length
+START_RESPONSE
+{
+  "destination": "${destination}",
+  "overview": "A brief 1-2 sentence overview of the trip to ${destination}",
+  "days": [
+    {
+      "day": 1,
+      "title": "Day 1 - Arrival and Exploration",
+      "activities": [
+        {"time": "09:00 AM", "activity": "Arrive at [REAL PLACE]", "location": "[REAL LOCATION NAME]", "description": "[Description]", "tips": "[Tip]"},
+        {"time": "01:00 PM", "activity": "Lunch at [REAL RESTAURANT]", "location": "[REAL RESTAURANT NAME]", "description": "[Description]", "tips": "[Tip]"},
+        {"time": "03:00 PM", "activity": "Visit [REAL ATTRACTION]", "location": "[REAL ATTRACTION NAME]", "description": "[Description]", "tips": "[Tip]"}
+      ],
+      "meals": {
+        "breakfast": {"restaurant": "[REAL BREAKFAST PLACE]", "cuisine": "[TYPE]", "description": "[Description]"},
+        "lunch": {"restaurant": "[REAL LUNCH PLACE]", "cuisine": "[TYPE]", "description": "[Description]"},
+        "dinner": {"restaurant": "[REAL DINNER PLACE]", "cuisine": "[TYPE]", "description": "[Description]"}
+      },
+      "accommodation": {"name": "[REAL HOTEL]", "type": "[TYPE]", "location": "[LOCATION]", "description": "[Description]"}
+    }
+  ],
+  "budget": {
+    "accommodation": "$XX-YY per night",
+    "food": "$XX-YY per day",
+    "activities": "$XX-YY per day",
+    "transportation": "$XX-YY",
+    "total": "$XXXX-YYYY total"
+  },
+  "tips": ["[Tip 1]", "[Tip 2]", "[Tip 3]", "[Tip 4]", "[Tip 5]"]
+}
+END_RESPONSE
 
-      return {
-        day: dayIndex + 1,
-        title: `Day ${dayIndex + 1} - Explore ${destData.name}`,
-        activities: dayAttractions.map((attraction, idx) => ({
-          time: ["08:30 AM", "11:00 AM", "02:00 PM", "05:00 PM"][idx] || "03:00 PM",
-          activity: `Visit ${attraction.name}`,
-          location: attraction.name,
-          description: attraction.description,
-          tips: attraction.tips || "Arrive early to avoid crowds",
-          duration: 120,
-        })),
-        meals: {
-          breakfast: {
-            ...destData.restaurants.breakfast[breakfastIdx],
-            time: "8:00 AM",
-          },
-          lunch: {
-            ...destData.restaurants.lunch[lunchIdx],
-            time: "12:30 PM",
-          },
-          dinner: {
-            ...destData.restaurants.dinner[dinnerIdx],
-            time: "7:00 PM",
-          },
+Use ONLY REAL places, restaurants, attractions, and hotels in ${destination}.
+${interests ? `User interests: ${interests}` : ""}
+Budget context: ${budget === "budget" ? "Economy options, local transportation, street food" : budget === "medium" ? "Mid-range restaurants and hotels, tourist attractions" : "Luxury hotels, fine dining, premium experiences"}
+
+Generate exactly ${days} days of itinerary. Be specific with real place names.`
+
+    console.log("[v0] Sending request to Groq with destination:", destination)
+
+    const { text } = await generateText({
+      model: groq("llama-3.1-70b-versatile"),
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      maxTokens: 4000,
+    })
+
+    console.log("[v0] Received response from Groq, length:", text.length)
+
+    // Extract JSON from response
+    const startIndex = text.indexOf("{")
+    const endIndex = text.lastIndexOf("}") + 1
+
+    if (startIndex === -1 || endIndex === 0) {
+      console.error("[v0] Could not find JSON in response")
+      console.log("[v0] Response text:", text.substring(0, 500))
+      throw new Error("No JSON found in Groq response")
+    }
+
+    const jsonStr = text.substring(startIndex, endIndex)
+    console.log("[v0] Extracted JSON, length:", jsonStr.length)
+
+    const itineraryData = JSON.parse(jsonStr)
+    console.log("[v0] Successfully parsed itinerary")
+
+    // Ensure all days have proper structure
+    const processedDays = itineraryData.days.map((day: any, idx: number) => ({
+      day: idx + 1,
+      title: day.title || `Day ${idx + 1} - ${destination}`,
+      activities: (day.activities || []).map((activity: any) => ({
+        time: activity.time || "10:00 AM",
+        activity: activity.activity || "Activity",
+        location: activity.location || destination,
+        description: activity.description || "Explore and enjoy",
+        tips: activity.tips || "Plan ahead",
+      })),
+      meals: {
+        breakfast: day.meals?.breakfast || {
+          restaurant: "Local Café",
+          cuisine: "Breakfast",
+          description: "Start your day",
         },
-        accommodation:
-          dayIndex === 0
-            ? {
-                name: destData.hotels[0].name,
-                type: destData.hotels[0].type,
-                location: destData.hotels[0].location,
-                description: destData.hotels[0].description,
-              }
-            : null,
-      }
-    })
+        lunch: day.meals?.lunch || {
+          restaurant: "Local Restaurant",
+          cuisine: "Lunch",
+          description: "Lunch break",
+        },
+        dinner: day.meals?.dinner || {
+          restaurant: "Local Restaurant",
+          cuisine: "Dinner",
+          description: "Evening meal",
+        },
+      },
+      accommodation: idx === 0 ? (day.accommodation || {
+        name: "Hotel",
+        type: "Accommodation",
+        location: destination,
+        description: "Stay",
+      }) : null,
+    }))
 
-    // Optimize itinerary
-    const optimizedDays = optimizeItinerary(generatedDays, {
-      pace: interests?.includes("relaxed") ? "relaxed" : interests?.includes("adventure") ? "fast" : "moderate",
-      interests: interests ? interests.split(",").map((i) => i.trim()) : [],
-      budget,
-    })
-
-    // Generate tips
-    const tips = generateOptimizedTips(destData.name, days, "moderate", interests)
-
-    // Calculate budget breakdown
-    const budgetBreakdownRaw = calculateBudgetBreakdown(days, budget as "budget" | "medium" | "luxury", destData.budget)
-
-    // Flatten budget for frontend - use total breakdown
-    const budgetFlat = {
-      accommodation: budgetBreakdownRaw.total.accommodation,
-      food: budgetBreakdownRaw.total.food,
-      activities: budgetBreakdownRaw.total.activities,
-      transportation: budgetBreakdownRaw.total.transport,
-      total: budgetBreakdownRaw.total.total,
-    }
-
-    const itinerary = {
-      destination: destData.name,
-      country: destData.country,
+    const finalItinerary = {
+      destination: itineraryData.destination || destination,
       duration: `${days} days, ${Math.max(0, days - 1)} nights`,
-      overview: destData.overview,
-      bestTime: destData.bestTime,
-      language: destData.language,
-      currency: destData.currency,
-      timezone: destData.timezone,
-      days: optimizedDays,
-      tips,
-      budget: budgetFlat,
+      overview: itineraryData.overview || `Explore the beauty of ${destination}`,
+      days: processedDays,
+      tips: itineraryData.tips || [
+        "Book accommodations in advance",
+        "Use local transportation",
+        "Eat where locals eat",
+        "Respect local customs",
+        "Stay hydrated",
+      ],
+      budget: {
+        accommodation: itineraryData.budget?.accommodation || "$50-150/night",
+        food: itineraryData.budget?.food || "$20-50/day",
+        activities: itineraryData.budget?.activities || "$20-50/day",
+        transportation: itineraryData.budget?.transportation || "$10-30/day",
+        total: itineraryData.budget?.total || "Contact for details",
+      },
     }
 
-    console.log("[v0] Generated complete itinerary successfully")
-
-    return Response.json({ itinerary })
+    console.log("[v0] Returning final itinerary")
+    return Response.json({ itinerary: finalItinerary })
   } catch (error) {
-    console.error("[v0] Error generating itinerary:", error)
+    console.error("[v0] Error in API route:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    console.log("[v0] Error details:", errorMessage)
+
     return Response.json(
-      { error: "Failed to generate itinerary", details: String(error) },
+      {
+        error: "Failed to generate itinerary",
+        details: errorMessage,
+      },
       { status: 500 },
     )
   }

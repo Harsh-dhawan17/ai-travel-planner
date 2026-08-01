@@ -141,11 +141,14 @@ export default function ResultsPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-emerald-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="max-w-md mx-auto text-center p-8 bg-white rounded-lg shadow-lg">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops! Something went wrong</h2>
           <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-xs text-gray-500 mb-6 bg-gray-50 p-3 rounded text-left overflow-auto max-h-32">
+            Error details: {error}
+          </p>
           <Link href="/planner">
-            <Button>Try Again</Button>
+            <Button className="w-full">Try Again</Button>
           </Link>
         </div>
       </div>
