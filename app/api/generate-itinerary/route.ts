@@ -49,9 +49,9 @@ For ${destination}, use REAL places, restaurants, and hotels. Budget type: ${bud
 
     console.log("[v0] Calling Groq API")
 
-    // Use Groq (FREE with GROQ_API_KEY)
+    // Use Groq (FREE with GROQ_API_KEY) - using compatible model
     const { text } = await generateText({
-      model: groq("mixtral-8x7b-32768"),
+      model: groq("gemma2-9b-it"),
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
       maxTokens: 2000,
